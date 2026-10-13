@@ -83,4 +83,3 @@ export const analyzeJavaScriptSource: JavaScriptSourceWorkerAnalyzer = async (
   );
   return { module, projection };
 };
-
