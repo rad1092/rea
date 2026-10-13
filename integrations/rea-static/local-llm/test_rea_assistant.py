@@ -72,6 +72,12 @@ class AssistantTests(unittest.TestCase):
         session = OwnedSessionFixture.instances[-1]
         self.assertEqual([item[0] for item in session.calls], ['rea_analyze','rea_discover','rea_call'])
         self.assertIn('ev_'+'c'*64, prompts[2])
+        context = json.loads(prompts[2].split('\n', 1)[1])
+        self.assertEqual(context['completed_calls'][1]['arguments'], {'tool':'trace_application_feature'})
+        self.assertEqual(context['completed_calls'][0]['analysis_reference'],
+                         {'kind':'retained-evidence','evidence_id':'ev_'+'c'*64})
+        self.assertNotIn('evidence_id', context['completed_calls'][0])
+        self.assertNotIn('view_evidence_id', context['completed_calls'][0])
         self.assertTrue(result['model_directed'])
         self.assertTrue(session.closed)
         self.assertEqual(len(result['tool_results']), 3)
@@ -107,8 +113,35 @@ class AssistantTests(unittest.TestCase):
         value = {'result_id':'result-owned','result':{'data':{'evidence_id':'ev_1','normalized_result':{'parent_evidence_id':'ev_2'}}}}
         shown = observation({'content':[{'type':'text','text':json.dumps(value)}]})
         self.assertEqual(references(shown)['parent_evidence_id'], 'ev_2')
-        self.assertEqual(references(shown)['evidence_id'], 'ev_1')
+        self.assertEqual(references(shown)['analysis_reference'], {'kind':'retained-evidence','evidence_id':'ev_2'})
+        self.assertNotIn('evidence_id', references(shown))
+        self.assertEqual(shown['result']['data']['view_evidence_id'], 'ev_1')
+        self.assertNotIn('evidence_id', shown['result']['data'])
         self.assertEqual(shown['result_id'], 'result-owned')
+        self.assertEqual(value['result']['data']['evidence_id'], 'ev_1')
+
+    def test_large_projection_separates_view_from_tool_ready_reference(self):
+        value = {'result_id':'result-owned','result':{'data':{
+            'evidence_id':'ev_view','raw_result':'x'*9500,
+            'normalized_result':{'parent_evidence_id':'ev_parent','summary':{'count':2}},
+        }}}
+        original = {'content':[{'type':'text','text':json.dumps(value)}]}
+        before = encode(original)
+        shown = observation(original)
+        self.assertEqual(shown['view_evidence_id'], 'ev_view')
+        self.assertEqual(shown['analysis_reference'], {'kind':'retained-evidence','evidence_id':'ev_parent'})
+        self.assertNotIn('evidence_id', shown)
+        self.assertNotIn('evidence_id', references(shown))
+        self.assertEqual(encode(original), before)
+
+    def test_model_argument_ids_are_never_rewritten(self):
+        choice = {'action':'tool','tool':'rea_call','arguments':{
+            'tool':'trace_application_feature','arguments':{
+                'application':{'kind':'retained-evidence','evidence_id':'ev_wrong_view'},
+                'seed':{'kind':'route','value':'/quote'},
+            }}}
+        accepted_envelope = decision(choice, 'owned', {'trace_application_feature'})
+        self.assertEqual(accepted_envelope['arguments']['arguments']['application']['evidence_id'], 'ev_wrong_view')
 
 
 if __name__ == '__main__': unittest.main()
