@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "rea-static",
+  "version": "0.1.0",
+  "description": "Evidence-based static reverse engineering through a pinned, root-scoped REA wrapper.",
+  "license": "MIT",
+  "keywords": ["reverse-engineering", "static-analysis", "javascript"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "REA Static",
+        "shortDescription": "Inspect artifacts within an explicit analysis root",
+        "longDescription": "Discover a small set of static REA tools and trace artifact evidence. Runtime debugging, target execution, device access, and network tools are disabled.",
+        "category": "Productivity",
+        "capabilities": ["Read"]
+      }
+    }
+  }
+}

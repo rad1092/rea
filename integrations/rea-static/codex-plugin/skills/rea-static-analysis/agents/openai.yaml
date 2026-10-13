@@ -1,0 +1,10 @@
+interface:
+  display_name: "REA Static Analysis"
+  short_description: "Trace shipped artifacts with scoped static evidence"
+  default_prompt: "Use $rea-static-analysis to explain the selected artifact with evidence and clear uncertainty."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "rea-static"
+      description: "Pinned REA wrapper for an explicit local analysis root"
+      transport: "stdio"

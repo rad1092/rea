@@ -1,0 +1,8 @@
+# Review-only fragment. Merge narrowly; never replace an existing config.toml.
+[plugins."rea-static@rea-local"]
+enabled = false
+
+[plugins."rea-static@rea-local".mcp_servers."rea-static"]
+enabled = false
+default_tools_approval_mode = "prompt"
+enabled_tools = ["rea_analyze", "rea_discover", "rea_call", "rea_read_result"]

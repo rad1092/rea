@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "rea-static": {
+      "type": "stdio",
+      "command": "/usr/bin/env",
+      "args": [
+        "-i",
+        "PATH=/usr/bin:/bin",
+        "REA_ANALYSIS_ROOT=/CONFIGURE/EXPLICIT_ANALYSIS_ROOT",
+        "REA_UPSTREAM_ROOT=/CONFIGURE/PINNED_REA_SOURCE",
+        "REA_STATE_ROOT=/CONFIGURE/DEDICATED_STATE_ROOT",
+        "REA_RUNTIME_MANIFEST=/CONFIGURE/REVIEWED_RUNTIME_MANIFEST.json",
+        "/CONFIGURE/REVIEWED_NODE_BINARY",
+        "/CONFIGURE/REA_INTEGRATION/bin/rea-static-mcp.mjs"
+      ]
+    }
+  }
+}

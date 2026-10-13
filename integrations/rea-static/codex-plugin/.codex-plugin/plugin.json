@@ -1,0 +1,13 @@
+{
+  "name": "rea-static",
+  "version": "0.1.0",
+  "description": "Evidence-based static reverse engineering through a pinned, root-scoped REA wrapper.",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "REA Static",
+    "shortDescription": "Inspect artifacts within an explicit analysis root",
+    "category": "Productivity",
+    "capabilities": ["Read"]
+  }
+}
