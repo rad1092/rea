@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cp, lstat, readFile, realpath, writeFile } from 'node:fs/promises';
+import { chmod, cp, lstat, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -53,20 +53,28 @@ try {
     if (within(root, output) || within(output, root)) throw new Error('Output overlaps an input or state directory.');
   }
   const portable = JSON.parse(await readFile(path.join(template, 'mcp.json'), 'utf8'));
+  const launchArguments = [
+    '-i', 'PATH=/usr/bin:/bin',
+    `REA_ANALYSIS_ROOT=${paths['analysis-root']}`,
+    `REA_UPSTREAM_ROOT=${paths['upstream-root']}`,
+    `REA_STATE_ROOT=${paths['state-root']}`,
+    `REA_RUNTIME_MANIFEST=${paths['runtime-manifest']}`,
+    paths.node, wrapper,
+  ];
+  // Current portable hosts require a contained ./ command. Quote every fixed
+  // argument as a POSIX literal; do not forward caller arguments or environment.
+  const quote = value => "'" + value.replaceAll("'", "'\"'\"'") + "'";
+  const launcher = '#!/bin/sh\nset -eu\nexec /usr/bin/env ' + launchArguments.map(quote).join(' ') + '\n';
   portable.mcpServers['rea-static'] = {
     type: 'stdio',
-    command: '/usr/bin/env',
-    args: [
-      '-i', 'PATH=/usr/bin:/bin',
-      `REA_ANALYSIS_ROOT=${paths['analysis-root']}`,
-      `REA_UPSTREAM_ROOT=${paths['upstream-root']}`,
-      `REA_STATE_ROOT=${paths['state-root']}`,
-      `REA_RUNTIME_MANIFEST=${paths['runtime-manifest']}`,
-      paths.node, wrapper,
-    ],
+    command: './scripts/launch-rea.sh',
+    args: [],
   };
   const { type: _type, ...legacyServer } = portable.mcpServers['rea-static'];
   await cp(template, output, { recursive: true, errorOnExist: true, force: false });
+  const launcherPath = path.join(output, 'scripts/launch-rea.sh');
+  await writeFile(launcherPath, launcher);
+  await chmod(launcherPath, 0o755);
   await writeFile(path.join(output, 'mcp.json'), JSON.stringify(portable, null, 2) + '\n');
   await writeFile(path.join(output, '.mcp.json'), JSON.stringify({ mcpServers: { 'rea-static': legacyServer } }, null, 2) + '\n');
   process.stdout.write(JSON.stringify({ output, registered: false, analysisRoot: paths['analysis-root'] }) + '\n');
