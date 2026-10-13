@@ -43,8 +43,9 @@ test('materializes explicit paths and launcher drops unrelated environment', asy
     const startup = path.join(root, 'untrusted-shell-startup');
     const marker = path.join(root, 'must-not-exist');
     await writeFile(startup, `touch '${marker}'\n`);
-    const child = spawnSync(path.join(output, server.command), server.args, { encoding: 'utf8', env: { ...process.env, REA_TEST_SECRET: 'must-not-forward', NODE_OPTIONS: '--definitely-invalid-for-this-test', BASH_ENV: startup, ENV: startup } });
+    const child = spawnSync(path.join(output, server.command), server.args, { encoding: 'utf8', env: { ...process.env, REA_TEST_SECRET: 'must-not-forward', NODE_OPTIONS: '--definitely-invalid-for-this-test', BASH_ENV: startup, ENV: startup, SHELLOPTS: 'noexec:verbose:xtrace' } });
     assert.equal(child.status, 0, child.stderr);
+    assert.equal(child.stderr, '');
     const received = JSON.parse(child.stdout);
     assert.equal(received.REA_TEST_SECRET, undefined);
     assert.equal(received.NODE_OPTIONS, undefined);

@@ -64,7 +64,7 @@ try {
   // Current portable hosts require a contained ./ command. Quote every fixed
   // argument as a POSIX literal; do not forward caller arguments or environment.
   const quote = value => "'" + value.replaceAll("'", "'\"'\"'") + "'";
-  const launcher = '#!/bin/sh\nset -eu\nexec /usr/bin/env ' + launchArguments.map(quote).join(' ') + '\n';
+  const launcher = '#!/bin/sh -p\nset -eu\nexec /usr/bin/env ' + launchArguments.map(quote).join(' ') + '\n';
   portable.mcpServers['rea-static'] = {
     type: 'stdio',
     command: './scripts/launch-rea.sh',
