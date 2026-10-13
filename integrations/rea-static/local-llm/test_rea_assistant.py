@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from rea_assistant import decision, encode, observation, references, run_assistant
+from rea_assistant import decision, encode, observation, parse_decision, references, run_assistant
 from rea_connector import ReaConfig, ReaError
 
 
@@ -31,6 +31,30 @@ class OwnedSessionFixture:
 
 
 class AssistantTests(unittest.TestCase):
+    def test_accepts_exact_whole_json_fence(self):
+        value = {'action':'tool','tool':'rea_discover','arguments':{'tool':'trace_application_feature'}}
+        self.assertEqual(parse_decision('```json\n'+encode(value)+'\n```', 'owned', set()), value)
+        self.assertEqual(parse_decision(' \n```json\r\n'+encode(value)+'\r\n```\n ', 'owned', set()), value)
+        self.assertEqual(parse_decision(encode(value), 'owned', set()), value)
+
+    def test_rejects_prose_and_multiple_fenced_blocks(self):
+        block = '```json\n{"action":"finish"}\n```'
+        for raw in ('Here it is:\n'+block, block+'\nDone.', block+'\n'+block,
+                    '```python\n{"action":"finish"}\n```',
+                    '```json\n```json\n{"action":"finish"}\n```\n```'):
+            with self.subTest(raw=raw), self.assertRaises((ReaError, ValueError)):
+                parse_decision(raw, 'owned', set())
+
+    def test_receipt_preserves_bounded_raw_before_parse(self):
+        for raw in ('not-json', '가'*4000):
+            with self.subTest(length=len(raw)), patch('rea_assistant.ReaSession', OwnedSessionFixture):
+                with self.assertRaises(ReaError) as caught:
+                    run_assistant(ReaConfig(), 'owned', '설명', lambda *_:raw, max_steps=1)
+                record = caught.exception.rea_receipt['decisions'][0]
+                self.assertLessEqual(len(record['raw_model_decision'].encode()), 8192)
+                self.assertEqual(record['raw_model_decision_truncated'], len(raw.encode()) > 8192)
+                self.assertNotIn('choice', record)
+
     def test_model_choices_drive_calls_and_references_survive_discovery(self):
         replies = iter([
             encode({'action':'tool','tool':'rea_analyze','arguments':{'input_path':'owned'}}),

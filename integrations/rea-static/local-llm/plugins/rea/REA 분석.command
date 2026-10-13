@@ -9,4 +9,4 @@ if [[ ! -x "${REA_PYTHON}" ]]; then
 fi
 cd "${REA_PROJECT_DIRECTORY}"
 "${REA_PYTHON}" "${REA_PROJECT_DIRECTORY}/scripts/rea_assistant.py" \
-  --config "${REA_PROJECT_DIRECTORY}/runtime/rea.local.json" --interactive
+  --config "${REA_PROJECT_DIRECTORY}/runtime/rea.local.json" --interactive "$@"

@@ -8,6 +8,7 @@ import io
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import sys
 import time
 
@@ -55,6 +56,17 @@ def decision(value, target, discovered):
             raise ReaError('로컬 모델에는 한 번에 최대 2,000자 결과 페이지만 보냅니다.')
         args = {**args, 'limit': args.get('limit', 1500)}
     return {**value, 'arguments': args}
+
+
+def parse_decision(text, target, discovered):
+    """Accept plain JSON or exactly one whole fenced JSON block, never prose."""
+    text = text.strip()
+    if text.startswith('```'):
+        block = re.fullmatch(r'```json[ \t]*\r?\n(.*)\r?\n```', text, re.DOTALL)
+        if block is None or re.search(r'(?m)^[ \t]*```', block.group(1)):
+            raise ReaError('JSON 코드블록 하나만 허용하며 블록 밖 설명은 허용하지 않습니다.')
+        text = block.group(1)
+    return decision(decode(text), target, discovered)
 
 
 def observation(result):
@@ -140,7 +152,8 @@ def prompt(question, target, tools, latest, calls, *, final=False):
             '도구: {"action":"tool","tool":"도구명","arguments":{...}}; '
             '분석 근거가 충분하면 {"action":"finish"}. 처음에는 선택된 input_path로 '
             'rea_analyze를 호출하세요. 필요하면 rea_discover로 한 작업의 스키마를 확인한 뒤 '
-            'rea_call을 선택하세요. 실행한 같은 호출을 되풀이하지 마세요.\n'
+            'rea_call을 선택하세요. 분석 참조의 evidence_id에는 분석 결과의 parent_evidence_id를 쓰세요. '
+            'result_id는 rea_read_result에만 씁니다. 실행한 같은 호출을 되풀이하지 마세요.\n'
         )
     value = {'question':question, 'selected_input_path':target,
              'tools': [] if final else tools, 'completed_calls':calls,
@@ -173,13 +186,19 @@ def run_assistant(config, target, question, model_call, *, max_steps=4, summary_
         try:
             for step in range(max_steps):
                 raw = model_call(prompt(question, target, session.tools, latest, calls), 512)
-                if not isinstance(raw, str) or len(raw.encode()) > 8192:
+                if not isinstance(raw, str):
+                    raise ReaError('모델의 도구 선택 응답이 한도를 넘었습니다.')
+                raw_bytes = raw.encode()
+                record = {'step':step+1, 'raw_model_decision':raw_bytes[:8192].decode('utf-8', errors='ignore'),
+                          'raw_model_decision_truncated':len(raw_bytes) > 8192}
+                receipt['decisions'].append(record)
+                if len(raw_bytes) > 8192:
                     raise ReaError('모델의 도구 선택 응답이 한도를 넘었습니다.')
                 try:
-                    choice = decision(decode(raw), target, discovered)
+                    choice = parse_decision(raw, target, discovered)
                 except (ValueError, TypeError, UnicodeError, RecursionError) as exc:
                     raise ReaError('모델이 유효한 JSON 도구 선택을 반환하지 않았습니다.') from exc
-                receipt['decisions'].append({'step':step+1, 'choice':choice})
+                record['choice'] = choice
                 if choice['action'] == 'finish':
                     if not analyzed:
                         raise ReaError('모델이 실제 분석 전 종료를 선택했습니다. 분석 완료로 보고하지 않습니다.')
