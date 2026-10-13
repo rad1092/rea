@@ -2,11 +2,15 @@
   "name": "rea-static",
   "version": "0.1.0",
   "description": "Evidence-based static reverse engineering through a pinned, root-scoped REA wrapper.",
+  "author": {"name": "REA Static integration contributors"},
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "REA Static",
     "shortDescription": "Inspect artifacts within an explicit analysis root",
+    "longDescription": "Discover a small set of static REA tools and trace artifact evidence. Runtime debugging, target execution, device access, and network tools are disabled.",
+    "developerName": "REA Static integration contributors",
+    "defaultPrompt": "Use $rea-static-analysis to analyze the selected owned artifact with evidence.",
     "category": "Productivity",
     "capabilities": ["Read"]
   }
