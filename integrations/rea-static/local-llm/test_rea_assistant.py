@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from rea_assistant import decision, encode, observation, parse_decision, references, run_assistant
+from rea_assistant import decision, encode, observation, parse_decision, references, run_assistant, model_catalog
 from rea_connector import ReaConfig, ReaError
 
 
@@ -31,6 +31,14 @@ class OwnedSessionFixture:
 
 
 class AssistantTests(unittest.TestCase):
+    def test_advertised_page_limit_matches_host_without_changing_gateway_schema(self):
+        original = [{'name':'rea_read_result', 'inputSchema':{'properties':{'limit':{'maximum':6000}}}}]
+        narrowed = model_catalog(original)
+        self.assertEqual(narrowed[0]['inputSchema']['properties']['limit']['maximum'], 2000)
+        self.assertEqual(original[0]['inputSchema']['properties']['limit']['maximum'], 6000)
+        with self.assertRaises(ReaError):
+            decision({'action':'tool','tool':'rea_read_result','arguments':{'result_id':'r','limit':2001}}, 'owned', set())
+
     def test_accepts_exact_whole_json_fence(self):
         value = {'action':'tool','tool':'rea_discover','arguments':{'tool':'trace_application_feature'}}
         self.assertEqual(parse_decision('```json\n'+encode(value)+'\n```', 'owned', set()), value)

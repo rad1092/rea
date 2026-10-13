@@ -131,6 +131,24 @@ async function retained(driver, result, expectedTool, { forcePaged = false } = {
   assert.equal(full.isError, false);
   assert.equal(full.tool, expectedTool);
   assert.ok(full.data && typeof full.data === 'object');
+  if(!receipt.complete_inline) {
+    if(receipt.projection) {
+      assert.ok(Buffer.byteLength(JSON.stringify(receipt.projection))<=6000, 'Summary projection exceeded its 6000-byte budget');
+      const selected = {
+        summary:full.data.normalized_result?.summary, coverage:full.data.normalized_result?.coverage,
+        authority:full.data.authority, confidence:full.data.confidence,
+        source_evidence_id:full.data.normalized_result?.source_evidence_id, trace_id:full.data.normalized_result?.trace_id,
+      };
+      for(const [key,value] of Object.entries(selected)) assert.deepEqual(receipt.projection[key],value, `Projection changed ${key}`);
+      if(receipt.projection.limitations_omitted) {
+        assert.equal(Object.hasOwn(receipt.projection,'limitations'),false);
+        assert.equal(receipt.projection.omitted_limitations_count,full.data.normalized_result.limitations.length);
+      } else assert.deepEqual(receipt.projection.limitations,full.data.normalized_result?.limitations);
+    } else {
+      assert.equal(receipt.projection_omitted,true);
+      assert.ok(typeof receipt.projection_omission_reason==='string' && receipt.projection_omission_reason.length>0);
+    }
+  }
   const item = { session: driver.name, receipt, pages, full };
   report.retained.push(item);
   return item;
@@ -324,9 +342,14 @@ async function main() {
     const change = normalized(item).changes.find(row => row.path === '/payload' && row.status === 'changed');
     assert.ok(change); assert.equal(change.left.value, largeA); assert.equal(change.right.value, largeB);
     assert.ok(item.pages.length > 1);
+    assert.ok(item.receipt.projection, 'Large comparison receipt must expose its bounded real summary');
+    assert.deepEqual(item.receipt.projection.summary, normalized(item).summary);
+    assert.deepEqual(item.receipt.projection.coverage, normalized(item).coverage);
+    assert.equal(digest(JSON.stringify(item.full)),item.receipt.sha256,'Adding the projection changed retained evidence bytes');
     denied(await tool(first, 'rea_read_result', { result_id: item.receipt.result_id, limit: 6001 }), /allowed|range/i);
     denied(await tool(first, 'rea_read_result', { result_id: item.receipt.result_id, offset: 9007199254740991 }), /range/i);
-    return { result_id: item.receipt.result_id, bytes: item.receipt.bytes, sha256: item.receipt.sha256, pages: item.pages.length };
+    return { result_id: item.receipt.result_id, bytes: item.receipt.bytes, sha256: item.receipt.sha256, pages: item.pages.length,
+      summaryProjection:true, projection_bytes:Buffer.byteLength(JSON.stringify(item.receipt.projection)) };
   });
   await check('first-gateway-graceful-shutdown', async () => { const exit = await first.shutdown(); assert.equal(exit.code, 0); return exit; });
 

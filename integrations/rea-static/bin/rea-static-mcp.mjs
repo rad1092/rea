@@ -20,6 +20,24 @@ function plain(value) { return value && typeof value === 'object' && !Array.isAr
 function keys(value, allowed, required = []) {
   if (!plain(value) || Object.keys(value).some(k=>!allowed.includes(k)) || required.some(k=>!Object.hasOwn(value,k))) throw new Error('Invalid or unsupported arguments');
 }
+function boundedResultProjection(value) {
+  const normalized = value?.normalized_result;
+  const projection = {
+    summary:normalized?.summary, coverage:normalized?.coverage, limitations:normalized?.limitations,
+    authority:value?.authority, confidence:value?.confidence,
+    source_evidence_id:normalized?.source_evidence_id, trace_id:normalized?.trace_id,
+  };
+  const omitted = reason => ({projection_omitted:true,projection_omission_reason:reason});
+  if(!Object.values(projection).some(item=>item!==undefined)) return omitted('Upstream result has no supported summary fields.');
+  if(Buffer.byteLength(JSON.stringify(projection))<=6000) return {projection};
+  if(projection.limitations!==undefined) {
+    projection.limitations_omitted=true;
+    projection.omitted_limitations_count=Array.isArray(projection.limitations)?projection.limitations.length:null;
+    delete projection.limitations;
+  }
+  if(Buffer.byteLength(JSON.stringify(projection))<=6000) return {projection};
+  return omitted('Selected summary fields exceed 6000 UTF-8 bytes even without limitations; read the complete retained result.');
+}
 async function canonicalDir(key) {
   const value = process.env[key];
   if (!value || !path.isAbsolute(value)) throw new Error(`${key} must be an explicit absolute directory`);
@@ -125,7 +143,18 @@ async function main() {
     const inline={isError:response.isError===true,...textResult({...receipt,result:JSON.parse(full)})};
     if(Buffer.byteLength(JSON.stringify(inline))+1024<=MAX_OUTPUT) return inline;
     receipt.complete_inline=false;
-    return {isError:response.isError===true,...textResult({...receipt,parent_evidence_id:value?.normalized_result?.parent_evidence_id ?? null,evidence_id:value?.evidence_id ?? null,notice:'Complete response retained. Use rea_read_result with this process-local result_id for bounded pages. Nothing is silently truncated.'})};
+    // This is a projection of already-retained data, never a new evidence grant.
+    const body={...receipt,parent_evidence_id:value?.normalized_result?.parent_evidence_id ?? null,evidence_id:value?.evidence_id ?? null,
+      ...boundedResultProjection(value),notice:'Complete response retained. The projection, when present, contains selected upstream summary fields. Use rea_read_result with this process-local result_id for the complete result; omissions are explicit.'};
+    let output={isError:response.isError===true,...textResult(body)};
+    if(Buffer.byteLength(JSON.stringify(output))+1024>MAX_OUTPUT) {
+      delete body.projection;
+      body.projection_omitted=true;
+      body.projection_omission_reason='Projection omitted because the encoded receipt exceeds the transport budget; read the complete retained result.';
+      output={isError:response.isError===true,...textResult(body)};
+    }
+    if(Buffer.byteLength(JSON.stringify(output))+1024>MAX_OUTPUT) throw new Error('Retained result receipt exceeds the transport budget');
+    return output;
   }
   async function call(name,args) {
     if(dead) throw new Error('Session invalidated; restart the wrapper');

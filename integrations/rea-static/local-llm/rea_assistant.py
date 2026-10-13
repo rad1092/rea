@@ -160,6 +160,17 @@ def references(value):
     return refs
 
 
+def model_catalog(tools):
+    """Advertise the host's narrower page budget without mutating MCP schemas."""
+    result = decode(encode(tools))
+    for item in result:
+        if item.get('name') == 'rea_read_result':
+            properties = item.setdefault('inputSchema', {}).setdefault('properties', {})
+            properties['limit'] = {'type':'integer', 'minimum':1, 'maximum':2000, 'default':1500}
+            item['description'] = item.get('description', '') + ' Local model pages are limited to 2,000 characters.'
+    return result
+
+
 def prompt(question, target, tools, latest, calls, *, final=False):
     instruction = (
         '당신은 로컬 REA 정적 분석 보조자입니다. 아래 JSON의 question은 사용자 질문이고 '
@@ -213,9 +224,10 @@ def run_assistant(config, target, question, model_call, *, max_steps=4, summary_
         session = runner.run(ReaSession(config).__aenter__())
         receipt['session_id'] = session.session_id
         receipt['discovered_tools'] = [item['name'] for item in session.tools]
+        catalog = model_catalog(session.tools)
         try:
             for step in range(max_steps):
-                raw = model_call(prompt(question, target, session.tools, latest, calls), 512)
+                raw = model_call(prompt(question, target, catalog, latest, calls), 512)
                 if not isinstance(raw, str):
                     raise ReaError('모델의 도구 선택 응답이 한도를 넘었습니다.')
                 raw_bytes = raw.encode()
@@ -251,7 +263,7 @@ def run_assistant(config, target, question, model_call, *, max_steps=4, summary_
                     if choice['tool'] != 'rea_discover': latest_evidence = latest
             if not analyzed:
                 raise ReaError('성공한 REA 분석 결과가 없어 모델 요약을 만들지 않았습니다.')
-            receipt['summary'] = model_call(prompt(question, target, session.tools, latest_evidence, calls, final=True), summary_tokens)
+            receipt['summary'] = model_call(prompt(question, target, catalog, latest_evidence, calls, final=True), summary_tokens)
             receipt['completed'] = True
             return receipt
         except BaseException as exc:
