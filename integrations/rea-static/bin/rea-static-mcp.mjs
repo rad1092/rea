@@ -8,6 +8,7 @@ import { publicTools, ALLOWED_TOOLS, getSchema, getToolSummary, validateCall, va
 import { PIN, NODE, cleanEnvironment, sandboxProfile } from '../lib/sandbox.mjs';
 import { UpstreamClient } from '../lib/upstream-client.mjs';
 import { verifyRuntime } from '../lib/attestation.mjs';
+import { admitToolCallParams } from '../lib/protocol-meta.mjs';
 
 const PACKAGE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const MAX_INPUT = 32768, MAX_OUTPUT = 16384, MAX_STORED = 32 * 1024 * 1024;
@@ -217,7 +218,7 @@ async function main() {
     if(active){reply(errorResult('One tool call at a time; no unbounded queue'));return;}
     active={id:message.id,controller:new AbortController()};
     const timer=setTimeout(()=>halt('Tool deadline exceeded; restart session'),20000);
-    try {keys(message.params,['name','arguments'],['name']);const value=await call(message.params.name,message.params.arguments??{});if(dead)throw new Error('Session invalidated');reply(value);}
+    try {const params=admitToolCallParams(message.params);const value=await call(params.name,params.arguments??{});if(dead)throw new Error('Session invalidated');reply(value);}
     catch(error){reply(errorResult(error.message));}
     finally{clearTimeout(timer);active=undefined;}
   }

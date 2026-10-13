@@ -30,6 +30,10 @@ try {
       throw new Error(`--${key} is not the expected file or directory.`);
     }
   }
+  // env treats an operand containing '=' as an assignment, even when quoted.
+  if (paths.node.includes('=')) {
+    throw new Error("The canonical --node path must not contain '='.");
+  }
   if (paths['analysis-root'] === path.parse(paths['analysis-root']).root) {
     throw new Error('The filesystem root cannot be an analysis root.');
   }

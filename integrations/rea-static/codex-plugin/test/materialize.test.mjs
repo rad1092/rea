@@ -20,14 +20,17 @@ test('materializes explicit paths and launcher drops unrelated environment', asy
   try {
     const integration = path.join(root, 'integration');
     const upstream = path.join(root, 'upstream');
-    const analysis = path.join(root, "analysis ' $(literal) `literal`");
+    const analysis = path.join(root, "analysis = ' $(literal) `literal`");
     const state = path.join(root, 'state');
     const output = path.join(root, 'plugin');
     await Promise.all([mkdir(path.join(integration, 'bin'), { recursive: true }), mkdir(upstream), mkdir(analysis), mkdir(state)]);
     // This owned stub tests launcher semantics only. It does not validate REA.
     await writeFile(path.join(integration, 'bin/rea-static-mcp.mjs'), 'process.stdout.write(JSON.stringify(process.env));\n');
     await writeFile(path.join(integration, 'runtime-manifest.json'), '{}');
-    const args = ['--node', process.execPath, '--integration-root', integration, '--upstream-root', upstream,
+    // The alias may contain '=' when the actual executable path does not.
+    const nodeAlias = path.join(root, 'node=alias');
+    await symlink(process.execPath, nodeAlias);
+    const args = ['--node', nodeAlias, '--integration-root', integration, '--upstream-root', upstream,
       '--analysis-root', analysis, '--state-root', state,
       '--runtime-manifest', path.join(integration, 'runtime-manifest.json'), '--output', output];
     const result = run(...args);
@@ -50,7 +53,7 @@ test('materializes explicit paths and launcher drops unrelated environment', asy
     assert.equal(received.REA_TEST_SECRET, undefined);
     assert.equal(received.NODE_OPTIONS, undefined);
     assert.equal(received.PATH, '/usr/bin:/bin');
-    assert.equal(path.basename(received.REA_ANALYSIS_ROOT), "analysis ' $(literal) `literal`");
+    assert.equal(path.basename(received.REA_ANALYSIS_ROOT), "analysis = ' $(literal) `literal`");
     await assert.rejects(access(marker));
     // macOS may inject this locale bookkeeping variable after env -i.
     if (process.platform === 'darwin') delete received.__CF_USER_TEXT_ENCODING;
@@ -60,6 +63,32 @@ test('materializes explicit paths and launcher drops unrelated environment', asy
     assert.equal(repeat.status, 1);
     assert.match(repeat.stderr, /already exists/);
     assert.equal(await readFile(path.join(output, 'mcp.json'), 'utf8'), before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects equals in the canonical Node path before creating a package', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rea-package-'));
+  try {
+    await Promise.all(['integration/bin', 'upstream', 'analysis', 'state'].map(dir => mkdir(path.join(root, dir), { recursive: true })));
+    await writeFile(path.join(root, 'integration/bin/rea-static-mcp.mjs'), '');
+    await writeFile(path.join(root, 'manifest.json'), '{}');
+    // An owned file is enough to test path validation; it is never executed.
+    const unsafeNode = path.join(root, 'node=owned-fixture');
+    const nodeAlias = path.join(root, 'node-alias');
+    await writeFile(unsafeNode, '#!/bin/sh\nexit 0\n');
+    await symlink(unsafeNode, nodeAlias);
+    for (const [index, node] of [unsafeNode, nodeAlias].entries()) {
+      const output = path.join(root, `plugin-${index}`);
+      const result = run('--node', node, '--integration-root', path.join(root, 'integration'),
+        '--upstream-root', path.join(root, 'upstream'), '--analysis-root', path.join(root, 'analysis'),
+        '--state-root', path.join(root, 'state'), '--runtime-manifest', path.join(root, 'manifest.json'), '--output', output);
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /canonical --node path must not contain '='/);
+      assert.equal(result.stdout, '');
+      await assert.rejects(access(output), { code: 'ENOENT' });
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

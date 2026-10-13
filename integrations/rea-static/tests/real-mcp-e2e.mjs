@@ -285,6 +285,18 @@ async function main() {
     for (const [name, args, pattern] of cases) denied(await tool(first, name, args), pattern);
     return { deniedCases: cases.length };
   });
+  await check('actual-mcp-metadata-is-bounded-and-grants-no-tool-authority', async () => {
+    const metadata = { progressToken: 'owned-progress-1', 'example.org/request-id': 'owned-correlation', context: { trace: ['owned'] } };
+    const catalog = success(await first.rpc('tools/call', { name: 'rea_discover', arguments: {}, _meta: metadata }));
+    assert.deepEqual(catalog.operations.map(item => item.name), ALLOWED_TOOLS);
+    const numericToken = success(await first.rpc('tools/call', { name: 'rea_discover', arguments: {}, _meta: { progressToken: 7 } }));
+    assert.equal(numericToken.advanced_enabled, false);
+    const invalidMetadata = [null, [], { progressToken: {} }, { progressToken: 'x'.repeat(129) }, { value: 'x'.repeat(4097) }, JSON.parse('{"nested":{"__proto__":{}}}')];
+    for (const _meta of invalidMetadata) denied(await first.rpc('tools/call', { name: 'rea_discover', arguments: {}, _meta }), /metadata|meta|prototype|JSON|limit|plain|progress/i);
+    denied(await first.rpc('tools/call', { name: 'inspect_artifact', arguments: {}, _meta: { authorization: 'approved' } }), /not allowed/i);
+    denied(await first.rpc('tools/call', { name: 'rea_analyze', arguments: { input_path: '../outside' }, _meta: { allowed_root: fixtureRoot } }), /relative|escaped|traversal/i);
+    return { validMetadataRequests: 2, invalidMetadataRejected: invalidMetadata.length, metadataAuthorityBypassesRejected: 2 };
+  });
 
   const left = await check('actual-analysis-v1-retains-parent-evidence', () => analyze(first, 'app-v1'));
   await check('actual-module-page-and-exact-item', async () => {
